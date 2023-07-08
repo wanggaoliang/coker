@@ -34,9 +34,9 @@ public:
 
     void start();
 
-    static void INIT(uint num)
+    static void INIT(uint icuNum, uint cpuNum)
     {
-        kernel = std::shared_ptr<CoKernel>(new CoKernel(num));
+        kernel = std::shared_ptr<CoKernel>(new CoKernel(icuNum, cpuNum));
     }
 
     static std::shared_ptr<CoKernel> getKernel()
@@ -46,16 +46,15 @@ public:
 
     ~CoKernel() = default;
 private:
-    CoKernel(uint);
+    CoKernel(uint,uint);
     const uint icuNum_;
     const uint cpuNum_;
     /* 只有主线程使用 */
     std::vector<CompStarterPtr> comps_;
-    std::shared_ptr<CPU> core_;
-
-    /* 中断注册相关多线程使用，保证线程安全 */
-
+    std::shared_ptr<ICU> icu_;
     std::vector<ICU *> icus_;
+    std::vector<CPU *> cpus_;
+    
     FileWQMap fileWQPtrs_;
     std::shared_ptr<TimeWQ> timer_;
     MuCore fMapLk_;
@@ -66,12 +65,12 @@ private:
 };
 
 template<typename Res>
-struct XCoreFAwaiter
+struct ICUFAwaiter
 {
     using ret_type = Res;
 
     template <typename F>
-    XCoreFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
+    ICUFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
     {}
 
     bool await_ready() noexcept
@@ -107,12 +106,12 @@ private:
 };
 
 template <>
-struct XCoreFAwaiter<void>
+struct ICUFAwaiter<void>
 {
     using ret_type = void;
 
     template <typename F>
-    XCoreFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
+    ICUFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
     {}
 
     bool await_ready() const noexcept
@@ -146,7 +145,7 @@ private:
 
 template <typename F>
     requires std::invocable<F>
-XCoreFAwaiter(Core* core, F &&func)->XCoreFAwaiter<decltype(std::declval<F>()())>;
+ICUFAwaiter(Core* core, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
 
 struct TimeAwaiter
 {

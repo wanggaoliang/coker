@@ -3,34 +3,50 @@
 
 std::shared_ptr<CoKernel> CoKernel::kernel = nullptr;
 
-CoKernel::CoKernel(uint num) :coreNum_(num)
+CoKernel::CoKernel(uint icuNum, uint cpuNum) :icuNum_(icuNum), cpuNum_(cpuNum)
 {
-    for (int i = 0;i < coreNum_ -1;i++)
+    for (int i = 0;i < icuNum_ - 1;i++)
     {
-        auto cPtr = std::make_shared<ThreadCore>();
-        thCores_.push_back(cPtr);
-        irqs_.push_back(cPtr->getCore());
-    }
-    core_ = std::make_shared<Core>();
-    irqs_.push_back(core_.get());
-    for (auto irq : irqs_)
-    {
-        if (irq)
+        auto cPtr = std::make_shared<CompStarter>(CompStarter::COMP_ICU);
+        comps_.push_back(cPtr);
+        auto icu = dynamic_cast<ICU *>(cPtr->getComp());
+        if (icu)
         {
-            irq->setScheCB(std::bind(&CoKernel::schedule, this));
-            irq->setTimeWakeCB(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1));
+            std::string name = "ICU:";
+            icu->setName(name += std::to_string(i));
+            icus_.push_back(icu);
+        }
+        
+    }
+    for (int i = 0;i < cpuNum_;i++)
+    {
+        auto cPtr = std::make_shared<CompStarter>(CompStarter::COMP_CPU);
+        comps_.push_back(cPtr);
+        auto cpu = dynamic_cast<CPU *>(cPtr->getComp());
+        if (cpu)
+        {
+            std::string name = "CPU:";
+            cpu->setName(name += std::to_string(i));
+            cpu->setScheCB(std::bind(&CoKernel::schedule, this));
+            cpus_.push_back(cpu);
         }
     }
-    core_->bindCore2Thread();
+    
+    icu_ = std::make_shared<ICU>();
+    icu_->setName(std::string("CPU")+std::to_string(icuNum_));
+    timer_ = std::make_shared<TimeWQ>();
+    timer_->setWEvents(EPOLLIN | EPOLLET);
+    icu_->addIRQ(timer_.get());
+    icus_.push_back(icu_.get());
 }
 
 void CoKernel::start()
 {
-    for (auto th : thCores_)
+    for (auto comp : comps_)
     {
-        th->run();
+        comp->run();
     }
-    core_->loop();
+    icu_->loop();
 }
 
 Lazy<int> CoKernel::waitFile(int fd, uint32_t events, WQCB cb)
@@ -73,7 +89,7 @@ Lazy<void> CoKernel::CoRoUnlock(MuCore &mu)
 
 Lazy<int> CoKernel::updateIRQ(int fd, uint32_t events)
 {
-    Core *core = nullptr;
+    ICU *icu = nullptr;
     int ret = 0;
     int i = 0;
     co_await CoRoLock(fMapLk_);
@@ -81,42 +97,42 @@ Lazy<int> CoKernel::updateIRQ(int fd, uint32_t events)
     auto found = file != fileWQPtrs_.end();
     if (!found)
     {
-        core = irqs_[0];
-        auto fq = std::make_shared<FileWQ>(fd, core);
+        icu = icus_[0];
+        auto fq = std::make_shared<FileWQ>(fd, icu);
         fq->setWEvents(events);
         fq->setWakeCallback(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1));
-        ret = co_await XCoreFAwaiter{ core,[core, &fq ,this]() -> int {
-            std::cout << "do in " << Core::getCurCore()->getIndex() << std::endl;
-        return core->addIRQ(fq.get());
+        ret = co_await ICUFAwaiter{ icu,[icu, &fq ,this]() -> int {
+            std::cout << "do in " << Component::getCurComp()->getName() << std::endl;
+        return icu->addIRQ(fq.get());
         }};
         if (!ret)
         {
             fileWQPtrs_.insert(FileWQMap::value_type{fd, fq});
             
-            for (i=1;i < coreNum_;i++)
+            for (i=1;i < icuNum_;i++)
             {
-                if (irqs_[i]->irqn > irqs_[0]->irqn)
+                if (icus_[i]->irqn > icus_[0]->irqn)
                 {
                     break;
                 }
             }
-            irqs_[0]->irqn++;
+            icus_[0]->irqn++;
             if (i != 1)
             {
-                auto temp = irqs_[0];
-                irqs_[0] = irqs_[i - 1];
-                irqs_[i - 1] = temp;
-                irqs_[0]->pos = 0;
-                irqs_[i - 1]->pos = i - 1;
+                auto temp = icus_[0];
+                icus_[0] = icus_[i - 1];
+                icus_[i - 1] = temp;
+                icus_[0]->pos = 0;
+                icus_[i - 1]->pos = i - 1;
             }
         }
     }
     else
     {
-        core = static_cast<Core *>(file->second->getCore());
+        icu = static_cast<ICU *>(file->second->getICU());
         file->second->setWEvents(events);
-        ret = co_await XCoreFAwaiter{ core,[core, &fq = file->second,this]() -> int {
-        return core->modIRQ(fq.get());
+        ret = co_await ICUFAwaiter{ icu,[icu, &fq = file->second,this]() -> int {
+        return icu->modIRQ(fq.get());
         } };
         
     }
@@ -126,7 +142,7 @@ Lazy<int> CoKernel::updateIRQ(int fd, uint32_t events)
 
 Lazy<int> CoKernel::removeIRQ(int fd)
 {
-    Core *core = nullptr;
+    ICU *icu = nullptr;
     int ret = 0;
     int i = 0;
     co_await CoRoLock(fMapLk_);
@@ -134,25 +150,25 @@ Lazy<int> CoKernel::removeIRQ(int fd)
     auto found = file != fileWQPtrs_.end();
     if (found)
     {
-        core = static_cast<Core *>(file->second->getCore());
-        ret = co_await XCoreFAwaiter{ core,[core, &fq = file->second,this]() -> int {
-        return core->delIRQ(fq.get());
+        icu = static_cast<ICU *>(file->second->getICU());
+        ret = co_await ICUFAwaiter{ icu,[icu, &fq = file->second,this]() -> int {
+        return icu->delIRQ(fq.get());
         } };
         fileWQPtrs_.erase(fd);
-        for (i = core->pos - 1;i >= 0;i--)
+        for (i = icu->pos - 1;i >= 0;i--)
         {
-            if (irqs_[i]->irqn < irqs_[core->pos]->irqn)
+            if (icus_[i]->irqn < icus_[icu->pos]->irqn)
             {
                 break;
             }
         }
-        irqs_[core->pos]->irqn--;
-        if (i != core->pos - 1)
+        icus_[icu->pos]->irqn--;
+        if (i != icu->pos - 1)
         {
-            irqs_[core->pos] = irqs_[i + 1];
-            irqs_[i + 1] = core;
-            irqs_[core->pos]->pos = core->pos;
-            core->pos = i + 1;
+            icus_[icu->pos] = icus_[i + 1];
+            icus_[i + 1] = icu;
+            icus_[icu->pos]->pos = icu->pos;
+            icu->pos = i + 1;
         }
     }
     co_await CoRoUnlock(fMapLk_);
