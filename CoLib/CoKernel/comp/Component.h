@@ -8,7 +8,7 @@ class Component :NonCopyable
 {
 public:
     Component();
-    ~Component();
+    ~Component(){};
     virtual void loop() = 0;
 
     virtual void quit() = 0;

@@ -26,7 +26,7 @@ public:
         requires std::is_convertible_v<T, ScheCB>
     void setScheCB(T &&cb)
     {
-        scheCB_ = std::forward<T>(cb)
+        scheCB_ = std::forward<T>(cb);
     }
 
 private:

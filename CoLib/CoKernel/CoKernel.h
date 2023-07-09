@@ -1,6 +1,6 @@
 #pragma once
-#include "TimeWQ.h"
-#include "FileWQ.h"
+#include "irq/TimeWQ.h"
+#include "irq/FileWQ.h"
 #include "CompStarter.h"
 #include "MuCore.h"
 #include "../CoRo/Lazy.h"
@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <type_traits>
 #include <concepts>
+#include <condition_variable>
 
 class CoKernel
 {
@@ -45,6 +46,8 @@ public:
     }
 
     ~CoKernel() = default;
+    void print_core();
+
 private:
     CoKernel(uint,uint);
     const uint icuNum_;
@@ -59,6 +62,8 @@ private:
     std::shared_ptr<TimeWQ> timer_;
     MuCore fMapLk_;
 
+    std::mutex hmu;
+    std::condition_variable hcv;
     MpmcQueue<std::coroutine_handle<>> readyRo_;
     /* 处理全在非协程中 */
     static std::shared_ptr<CoKernel> kernel;
@@ -70,25 +75,17 @@ struct ICUFAwaiter
     using ret_type = Res;
 
     template <typename F>
-    ICUFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
+    ICUFAwaiter(ICU *icu, F &&func) : func_(std::forward<F>(func)), icu_(icu)
     {}
 
     bool await_ready() noexcept
     {
-        if (core_->isInLoopThread())
-        {
-            ret = func_();
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
     void await_suspend(std::coroutine_handle<> handle)
     {
-        core_->queueInLoop([h = std::move(handle), func = std::move(func_), this]() mutable -> void {
+        icu_->queueInLoop([h = std::move(handle), func = std::move(func_), this]() mutable -> void {
             ret = func();
             CoKernel::getKernel()->wakeUpReady(h);
                            });
@@ -100,7 +97,7 @@ struct ICUFAwaiter
     }
 
 private:
-    Core *core_;
+    ICU *icu_;
     ret_type ret;
     std::function<ret_type()> func_;
 };
@@ -111,25 +108,17 @@ struct ICUFAwaiter<void>
     using ret_type = void;
 
     template <typename F>
-    ICUFAwaiter(Core *core, F &&func) : func_(std::forward<F>(func)), core_(core)
+    ICUFAwaiter(ICU *icu, F &&func) : func_(std::forward<F>(func)), icu_(icu)
     {}
 
     bool await_ready() const noexcept
     {
-        if (core_->isInLoopThread())
-        {
-            func_();
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+       return false;
     }
 
     void await_suspend(std::coroutine_handle<> handle)
     {
-        core_->queueInLoop([h = std::move(handle), func = std::move(func_)]() mutable -> void {
+        icu_->queueInLoop([h = std::move(handle), func = std::move(func_)]() mutable -> void {
             func();
             CoKernel::getKernel()->wakeUpReady(h);
                            });
@@ -139,19 +128,19 @@ struct ICUFAwaiter<void>
     {}
 
 private:
-    Core *core_;
+    ICU *icu_;
     std::function <void()> func_;
 };
 
 template <typename F>
     requires std::invocable<F>
-ICUFAwaiter(Core* core, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
+ICUFAwaiter(ICU* icu, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
 
 struct TimeAwaiter
 {
     TimePoint point;
-    TimeAwaiter(const TimePoint &when) :point(when)
-    {};
+    TimeWQ *timer;
+    TimeAwaiter(const TimePoint &when,TimeWQ *t) : point(when),timer(t){};
 
     ~TimeAwaiter() = default;
 
@@ -162,7 +151,9 @@ struct TimeAwaiter
 
     bool await_suspend(std::coroutine_handle<> h)
     {
-        Core::getCurCore()->waitTime(h, point);
+        auto icu = static_cast<ICU *>(timer->getICU());
+        icu->queueInLoop([h, this]() mutable -> void
+                         { timer->addWait(h, point); });
         return true;
     }
 
@@ -186,46 +177,27 @@ struct FileAwaiter
 
     bool await_suspend(std::coroutine_handle<> handle)
     {
-        auto core = static_cast<Core *>(fq_->getCore());
+        auto icu = static_cast<ICU *>(fq_->getICU());
         auto xFunc = [this](int fd,uint events)mutable->bool {
             auto cons = this->func_(fd, events);
             ret = cons.ret;
             err_ = errno;
             return cons.block;
         };
-        if (core->isInLoopThread())
+        icu->queueInLoop([h = std::move(handle), func = std::move(xFunc), this]() mutable -> void {
+        auto revents = fq_->getREvents();
+        auto bl = func(fq_->getFd(), 0);
+        fq_->setREvents(revents & ~ events_);
+        if (bl)
         {
-            auto revents = fq_->getREvents();
-            auto bl = xFunc(fq_->getFd(), 0);
-            fq_->setREvents(revents & ~events_);
-            if (bl)
-            {
-                fq_->addWait(handle, events_, std::move(xFunc));
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            fq_->addWait(h, events_, std::move(func));
         }
         else
         {
-            core->queueInLoop([h = std::move(handle), func = std::move(xFunc), this]() mutable -> void {
-                auto revents = fq_->getREvents();
-                auto bl = func(fq_->getFd(), 0);
-                fq_->setREvents(revents & ~ events_);
-                if (bl)
-                {
-                    fq_->addWait(h, events_, std::move(func));
-                    fq_->wakeup();
-                }
-                else
-                {
-                    CoKernel::getKernel()->wakeUpReady(h);
-                }
-                });
-            return true;
+            CoKernel::getKernel()->wakeUpReady(h);
         }
+        });
+        return true;
     }
 
     int await_resume() noexcept

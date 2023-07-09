@@ -33,9 +33,10 @@ CoKernel::CoKernel(uint icuNum, uint cpuNum) :icuNum_(icuNum), cpuNum_(cpuNum)
     }
     
     icu_ = std::make_shared<ICU>();
-    icu_->setName(std::string("CPU")+std::to_string(icuNum_));
-    timer_ = std::make_shared<TimeWQ>();
+    icu_->setName(std::string("ICU:")+std::to_string(icuNum_));
+    timer_ = std::make_shared<TimeWQ>(icu_.get());
     timer_->setWEvents(EPOLLIN | EPOLLET);
+    timer_->setWakeCallback(std::bind(&CoKernel::wakeUpReady,this, std::placeholders::_1));
     icu_->addIRQ(timer_.get());
     icus_.push_back(icu_.get());
 }
@@ -74,7 +75,7 @@ Lazy<int> CoKernel::waitFile(int fd, uint32_t events, WQCB cb)
 
 Lazy<void> CoKernel::waitTime(const TimePoint &tp)
 {
-    co_await TimeAwaiter{ tp };
+    co_await TimeAwaiter{ tp,timer_.get() };
 }
 
 Lazy<void> CoKernel::CoRoLock(MuCore &mu)
@@ -179,16 +180,22 @@ Lazy<int> CoKernel::removeIRQ(int fd)
 void CoKernel::wakeUpReady(std::coroutine_handle<> &h)
 {
     readyRo_.enqueue(h);
+    hcv.notify_one();
 }
 
 bool CoKernel::schedule()
 {
     std::coroutine_handle<> h;
-    auto ret = readyRo_.dequeue(h);
-    if(ret)
+    while (readyRo_.dequeue(h))
     {
-        //std::cout << Core::getCurCore()->getIndex() << ":h.re" << std::endl;
         h.resume();
     }
-    return ret;
+    std::unique_lock<std::mutex> ulo(hmu);
+    hcv.wait(ulo);
+    ulo.unlock();
+    return false;
+}
+
+void CoKernel::print_core(){
+    std::cout << "do in " << Component::getCurComp()->getName() << std::endl;
 }

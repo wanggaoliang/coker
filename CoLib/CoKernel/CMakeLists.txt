@@ -1,4 +1,6 @@
-set(SRC_KER CoKernel.cpp Core.cpp FDICU.cpp FileWQ.cpp ThreadCore.cpp TimeWQ.cpp)
+set(SRC_KER CoKernel.cpp)
 add_library(CoKernel ${SRC_KER})
 target_include_directories(CoKernel PUBLIC ./ PUBLIC ../CoRo PUBLIC ../utils)
-target_link_libraries(CoKernel PUBLIC pthread)
+add_subdirectory(comp)
+add_subdirectory(irq)
+target_link_libraries(CoKernel PUBLIC Component IRQ pthread)

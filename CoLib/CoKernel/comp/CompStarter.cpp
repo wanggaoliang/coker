@@ -36,12 +36,10 @@ void CompStarter::loopFuncs()
     switch (cate_)
     {
     case COMP_ICU:
-        auto icu = new ICU();
-        comp = std::shared_ptr<Component>(icu);
+        comp = std::shared_ptr<Component>(new ICU());
         break;
     case COMP_CPU:
-        auto cpu = new CPU();
-        comp = std::shared_ptr<Component>(cpu);
+        comp = std::shared_ptr<Component>(new CPU());
         break;
     default:
         break;

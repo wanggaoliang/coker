@@ -49,7 +49,6 @@ void CPU::quit()
 
     if (!isInLoopThread())
     {
-        wakeUp();
     }
 }
 

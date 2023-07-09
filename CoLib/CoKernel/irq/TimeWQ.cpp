@@ -4,7 +4,7 @@
 #include <memory.h>
 #include <unistd.h>
 
-TimeWQ::TimeWQ() :IRQAbs(-1)
+TimeWQ::TimeWQ(void *icu) :IRQAbs(-1,icu)
 {
     fd_ = ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
 }
