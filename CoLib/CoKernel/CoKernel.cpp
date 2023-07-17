@@ -179,20 +179,24 @@ Lazy<int> CoKernel::removeIRQ(int fd)
 
 void CoKernel::wakeUpReady(std::coroutine_handle<> &h)
 {
-    readyRo_.enqueue(h);
+    {
+        std::lock_guard<std::mutex> lg(hmu);
+        readyRo_.enqueue(h);
+    }
+    
     hcv.notify_one();
 }
 
 bool CoKernel::schedule()
 {
     std::coroutine_handle<> h;
-    while (readyRo_.dequeue(h))
+    std::unique_lock<std::mutex> ulo(hmu);
+    hcv.wait(ulo, [&h,this]()->bool {return readyRo_.dequeue(h);});
+    ulo.unlock();
+    do
     {
         h.resume();
-    }
-    std::unique_lock<std::mutex> ulo(hmu);
-    hcv.wait(ulo);
-    ulo.unlock();
+    } while (readyRo_.dequeue(h));
     return false;
 }
 

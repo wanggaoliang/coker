@@ -21,11 +21,11 @@ Lazy<int> coasync::listen(int fd, int backlog)
 
 Lazy<int> coasync::accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
 {
-    auto acfunc = [](int fd, uint events)mutable->ioret {
+    auto acfunc = [addr, addrlen](int fd, uint events)mutable->ioret {
         int clifd = -1;
         while (true)
         {
-            clifd = ::accept4(fd, (struct sockaddr *) NULL, NULL, SOCK_NONBLOCK);
+            clifd = ::accept4(fd, (struct sockaddr *) addr, addrlen, SOCK_NONBLOCK);
             if (clifd == -1)
             {
                 if (errno == EWOULDBLOCK)
