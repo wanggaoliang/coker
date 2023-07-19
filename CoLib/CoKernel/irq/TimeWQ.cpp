@@ -12,11 +12,6 @@ TimeWQ::TimeWQ(void *icu) :IRQAbs(-1,icu)
 TimeWQ::~TimeWQ()
 {
     readTimerfd();
-    for (auto iter = items_.begin(); iter != items_.end(); iter++)
-    {
-        wakeCB_(iter->h_);
-    }
-    items_.clear();
     
     if (fd_ >= 0)
     {
@@ -25,7 +20,7 @@ TimeWQ::~TimeWQ()
     }
 }
 
-void TimeWQ::wakeup()
+Generator<std::coroutine_handle<>> TimeWQ::wakeup()
 {
     const auto now = std::chrono::steady_clock::now();
     readTimerfd();
@@ -36,8 +31,16 @@ void TimeWQ::wakeup()
             resetTimerfd(iter->when_);
             break;
         }
-        wakeCB_(iter->h_);
+        if (iter->cb_)
+        {
+            iter->cb_();
+        }
+        auto h = iter->h_;
         iter = items_.erase(iter);
+        if (h)
+        {
+            co_yield h;
+        }
     }
 }
 
@@ -72,7 +75,7 @@ int TimeWQ::resetTimerfd(const TimePoint &expiration)
     return ret;
 }
 
-void TimeWQ::addWait(const std::coroutine_handle<> &h, const TimePoint &when)
+std::list<TimeWQ::WaitItem>::iterator TimeWQ::addWait(const std::coroutine_handle<> &h, const TimePoint &when, TimeCBWrap &&cb)
 {
     auto iter = items_.begin();
     for (; iter != items_.end(); iter++)
@@ -87,5 +90,26 @@ void TimeWQ::addWait(const std::coroutine_handle<> &h, const TimePoint &when)
     {
         resetTimerfd(when);
     }
-    items_.emplace(iter, h, when);
+    return items_.emplace(iter, h, when,std::move(cb));
+    
 }
+
+std::list<TimeWQ::WaitItem>::iterator TimeWQ::addWait(const TimePoint &when)
+{
+    auto iter = items_.begin();
+    for (; iter != items_.end(); iter++)
+    {
+
+        if (iter->when_ > when)
+        {
+            break;
+        }
+    }
+    if (iter == items_.begin())
+    {
+        resetTimerfd(when);
+    }
+    return items_.emplace(iter, when);
+
+}
+

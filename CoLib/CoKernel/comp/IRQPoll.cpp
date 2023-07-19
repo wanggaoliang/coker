@@ -25,7 +25,7 @@ int IRQPoll::updateIRQ(int op, IRQAbs *WQA)
     return ret;
 }
 
-int IRQPoll::waitIRQ(int timeout)
+int IRQPoll::waitIRQ(IRQPtrList& list, int timeout)
 {
     epoll_event events_[128];
     int num_events = epoll_wait(epoll_fd_, events_, 128, timeout);
@@ -37,7 +37,7 @@ int IRQPoll::waitIRQ(int timeout)
     {
         IRQAbs *WQA = static_cast<IRQAbs *>(events_[i].data.ptr);
         WQA->addREvents(events_[i].events);
-        WQA->wakeup();
+        list.emplace_back(WQA);
     }
     return num_events;
 }

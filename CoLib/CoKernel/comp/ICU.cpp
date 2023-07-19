@@ -5,7 +5,7 @@
 #include <signal.h>
 #include <fcntl.h>
 
-const int kPollTimeMs = 1000;
+const int kPollTimeMs = 1000000;
 
 ICU::ICU()
     :Component(),
@@ -23,6 +23,9 @@ ICU::ICU()
         read(fd, &tmp, sizeof(tmp));}));
     wakeUpWQ_->setWEvents(EPOLLIN | EPOLLET);
     poller_->updateIRQ(EPOLL_CTL_ADD, wakeUpWQ_.get());
+    timerWQ_.reset(new TimeWQ(this));
+    timerWQ_->setWEvents(EPOLLIN | EPOLLET);
+    poller_->updateIRQ(EPOLL_CTL_ADD, timerWQ_.get());
 }
 
 
@@ -39,6 +42,7 @@ ICU::~ICU()
 
 void ICU::loop()
 {
+    IRQPtrList list;
     assert(!looping_);
     assertInLoopThread();
     looping_.store(true, std::memory_order_release);
@@ -53,8 +57,17 @@ void ICU::loop()
         {
             func();
         }
-        
-        poller_->waitIRQ(kPollTimeMs);
+        for (auto i : list)
+        {
+            auto ge = i->wakeup();
+            while (bool(ge))
+            {
+                auto h = ge();
+                wakeCB_(h);
+            }
+        }
+        list.clear();
+        poller_->waitIRQ(list, kPollTimeMs);
     }
 }
 

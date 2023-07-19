@@ -2,6 +2,7 @@
 #include "Component.h"
 #include "IRQPoll.h"
 #include "../irq/FileWQ.h"
+#include "../irq/TimeWQ.h"
 #include "../../utils/MpmcQueue.h"
 #include <memory>
 #include <vector>
@@ -66,6 +67,17 @@ public:
         return poller_->updateIRQ(EPOLL_CTL_DEL, WQA);
     }
 
+    void addTime(std::coroutine_handle<> h, const TimePoint &when)
+    {
+        queueInLoop([h, when, this]() {auto it = timerWQ_->addWait(when);it->h_ = h;});
+    }
+
+    template<typename T>
+        requires std::is_convertible_v<T, WakeCB>
+    void setWakeCallback(T &&func)
+    {
+        wakeCB_ = std::forward<T>(func);
+    }
 public:
     uint irqn;
     uint pos;
@@ -74,4 +86,6 @@ private:
     std::unique_ptr<IRQPoll> poller_;
     MpmcQueue<XCompFunc> funcs_;
     std::unique_ptr<FileWQ> wakeUpWQ_;
+    std::unique_ptr<TimeWQ> timerWQ_;
+    WakeCB wakeCB_;
 };

@@ -1,23 +1,6 @@
 #include "FileWQ.h"
 
-FileWQ::~FileWQ()
-{
-    if (fdCallbck_)
-    {
-        fdCallbck_(fd_);
-    }
-    for (auto iter = items_.begin(); iter != items_.end(); )
-    {
-        if (iter->cb_)
-        {
-            iter->cb_(fd_, revents_);
-        }
-        wakeCB_(iter->h_);
-        iter = items_.erase(iter);
-    }
-}
-
-void FileWQ::wakeup()
+Generator<std::coroutine_handle<>> FileWQ::wakeup()
 {
     if (fdCallbck_)
     {
@@ -37,12 +20,12 @@ void FileWQ::wakeup()
                 iter->cb_(fd_, revents_ & iter->events_);
             }
             revents_ &= ~(iter->events_);
-            if (wakeCB_)
-            {
-                wakeCB_(iter->h_);
-            }
-
+            auto h = iter->h_;
             iter = items_.erase(iter);
+            if (h)
+            {
+                co_yield h;
+            }
         }
         else
         {

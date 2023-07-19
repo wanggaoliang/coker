@@ -7,7 +7,7 @@
 
 using TimePoint = std::chrono::steady_clock::time_point;
 using TimeInterval = std::chrono::microseconds;
-
+using TimeCBWrap = std::function<void()>;
 class TimeWQ :public IRQAbs
 {
 public:
@@ -16,13 +16,21 @@ public:
     struct WaitItem
     {
         std::coroutine_handle<> h_;
+        TimeCBWrap cb_;
         TimePoint when_;
 
-        WaitItem(const std::coroutine_handle<> &h,
-                 const TimePoint &when) :
+        WaitItem(const TimePoint &when) :when_(when)
+        {
+            
+        }
+        
+        WaitItem(const std::coroutine_handle<> &h, const TimePoint &when, TimeCBWrap &&cb) :
             h_(h),
-            when_(when)
-        {}
+            when_(when),
+            cb_(std::move(cb))
+        {
+            
+        }
     };
 
     TimeWQ(void *icu);
@@ -31,20 +39,21 @@ public:
 
     ~TimeWQ();
 
-    void wakeup() override;
+    Generator<std::coroutine_handle<>> wakeup() override;
 
-    void addWait(const std::coroutine_handle<> &, const TimePoint &);
+    std::list<WaitItem>::iterator addWait(const std::coroutine_handle<> &, const TimePoint &, TimeCBWrap &&);
+    
+    std::list<WaitItem>::iterator addWait(const TimePoint &);
 
-    template<typename T>
-        requires std::is_convertible_v<T, WakeCB>
-    void setWakeCallback(T &&func)
+    void delWait(std::list<WaitItem>::iterator it)
     {
-        wakeCB_ = std::forward<T>(func);
+        items_.erase(it);
     }
+
 private:
     int readTimerfd();
 
     int resetTimerfd(const TimePoint &expiration);
     std::list<WaitItem> items_;
-    WakeCB wakeCB_;
+    
 };

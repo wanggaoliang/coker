@@ -15,35 +15,38 @@ using FDCB = std::function<void(int)>;
 class FileWQ :public IRQAbs
 {
 public:
-    struct waitItem
+    struct WaitItem
     {
         WQCBWrap cb_;
         std::coroutine_handle<> h_;
         uint events_;
-        waitItem(const std::coroutine_handle<> &h, uint events, WQCBWrap&& cb)
+        WaitItem()
+        {}
+        
+        WaitItem(const std::coroutine_handle<> &h, uint events, WQCBWrap &&cb)
             :h_(h), events_(events),cb_(std::move(cb))
         {}
     };
 
     FileWQ(int fd, void *icu):IRQAbs(fd,icu) {}
 
-    ~FileWQ();
+    ~FileWQ(){};
     
-    void wakeup() override;
+    Generator<std::coroutine_handle<>> wakeup() override;
 
     
     template<typename T>
     requires std::is_convertible_v<T, WQCBWrap>
-    void addWait(const std::coroutine_handle<> &h, uint events, T &&cb)
+    std::list<WaitItem>::iterator addWait(const std::coroutine_handle<> &h, uint events, T &&cb)
     {
         items_.emplace_back(h, events, std::forward<T>(cb));
+        return --items_.end();
     }
 
-    template<typename T>
-    requires std::is_convertible_v<T,WakeCB>
-    void setWakeCallback(T &&func)
+    std::list<WaitItem>::iterator addWait()
     {
-        wakeCB_ = std::forward<T>(func);
+        items_.emplace_back();
+        return --items_.end();
     }
 
     template<typename T>
@@ -53,10 +56,13 @@ public:
         fdCallbck_ = std::forward<T>(func);
     }
 
+    void delWait(std::list<WaitItem>::iterator it)
+    {
+        items_.erase(it);
+    }
+
 private:
-    std::list<waitItem> items_;
-    WakeCB wakeCB_;
+    std::list<WaitItem> items_;
     FDCB fdCallbck_;
-    
 };
 

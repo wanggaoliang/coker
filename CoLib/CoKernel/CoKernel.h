@@ -59,7 +59,6 @@ private:
     std::vector<CPU *> cpus_;
     
     FileWQMap fileWQPtrs_;
-    std::shared_ptr<TimeWQ> timer_;
     MuCore fMapLk_;
 
     std::mutex hmu;
@@ -139,8 +138,8 @@ ICUFAwaiter(ICU* icu, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
 struct TimeAwaiter
 {
     TimePoint point;
-    TimeWQ *timer;
-    TimeAwaiter(const TimePoint &when,TimeWQ *t) : point(when),timer(t){};
+    ICU *icu_;
+    TimeAwaiter(const TimePoint &when,ICU *icu) : point(when),icu_(icu){};
 
     ~TimeAwaiter() = default;
 
@@ -151,9 +150,7 @@ struct TimeAwaiter
 
     bool await_suspend(std::coroutine_handle<> h)
     {
-        auto icu = static_cast<ICU *>(timer->getICU());
-        icu->queueInLoop([h, this]() mutable -> void
-                         { timer->addWait(h, point); });
+        icu_->addTime(h, point);
         return true;
     }
 

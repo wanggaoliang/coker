@@ -1,12 +1,15 @@
 #pragma once
 #include <vector>
+#include "../../CoRo/Generator.h"
+
 class IRQAbs
 {
 public:
     IRQAbs(int fd, void *icu) :revents_(0), wevents_(0), fd_(fd), icu_(icu) {}
     ~IRQAbs()
     {}
-    virtual void wakeup() = 0;
+    
+    virtual Generator<std::coroutine_handle<>> wakeup() = 0;
 
     void setREvents(uint revents)
     {

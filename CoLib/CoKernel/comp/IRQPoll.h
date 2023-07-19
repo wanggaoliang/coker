@@ -9,7 +9,7 @@ public:
     ~IRQPoll();
 
     int updateIRQ(int, IRQAbs*);
-    int waitIRQ(int);
+    int waitIRQ(IRQPtrList&,int);
 
 private:
     int epoll_fd_;
