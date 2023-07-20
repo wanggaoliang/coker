@@ -1,11 +1,9 @@
 #include "CoLib/CoRo/Lazy.h"
-#include "CoLib/CoRo/Task.h"
 #include "CoLib/CoKernel/CoKernel.h"
-#include "CoLib/ATime.h"
-#include "CoLib/AMutex.h"
+#include "CoLib/AFiber.h"
 #include "CoLib/ASocket.h"
 #include <string.h>
-Task testconnection(int connfd)
+Lazy<void> testconnection(int connfd)
 {
     char buff[4096];
     int n;
@@ -28,7 +26,7 @@ Task testconnection(int connfd)
     co_await coasync::close(connfd);
 }
 
-Task init()
+Lazy<void> init()
 {
     int listenfd, connfd;
     struct sockaddr_in servaddr;
@@ -45,7 +43,7 @@ Task init()
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(6666);
 
-    if (bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
+    if (bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) == -1)
     {
         exit(0);
     }
@@ -64,14 +62,14 @@ Task init()
         {
             continue;
         }
-        testconnection(connfd);
+        coasync::fiber(testconnection, connfd);
     }
     co_await coasync::close(listenfd);
 }
 int main()
 {
     CoKernel::INIT(2, 1);
-    init();
+    coasync::fiber{ init };
     std::cout << std::thread::hardware_concurrency() << std::endl;
     CoKernel::getKernel()->start();
     std::cout << "2" << std::endl;

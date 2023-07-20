@@ -45,8 +45,6 @@ public:
     static int cnt;
 };
 
-int TaskPromise::cnt = 1;
-
 class Task
 {
 public:

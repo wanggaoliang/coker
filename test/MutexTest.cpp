@@ -1,11 +1,10 @@
 #include "CoLib/CoRo/Lazy.h"
-#include "CoLib/CoRo/Task.h"
 #include "CoLib/CoKernel/CoKernel.h"
-#include "CoLib/ATime.h"
+#include "CoLib/AFiber.h"
 #include "CoLib/AMutex.h"
 coasync::AMutex amu;
 
-Task test1(int a)
+Lazy<void> test1(int a)
 {
     for (int i = 0; i < 10; i++)
     {
@@ -17,13 +16,12 @@ Task test1(int a)
     co_return;
 }
 
-Task init()
+void init()
 {
     for (int i = 0; i < 10; i++)
     {
-        test1(i);
+        coasync::fiber(test1, i);
     }
-    co_return;
 }
 int main()
 {

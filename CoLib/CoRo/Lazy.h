@@ -202,6 +202,7 @@ public:
     {
         if (_coro)
         {
+            std::cout << "lazy des" << std::endl;
             _coro.destroy();
             _coro = nullptr;
         }
@@ -227,8 +228,9 @@ public:
     {
         return ValueAwaiter(std::exchange(_coro, nullptr));
     }
-protected:
     Handle _coro;
+protected:
+    int i;
 };
 
 template <typename T>
