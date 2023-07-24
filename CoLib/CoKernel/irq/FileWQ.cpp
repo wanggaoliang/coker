@@ -1,4 +1,5 @@
 #include "FileWQ.h"
+#include <sys/epoll.h>
 
 Generator<std::coroutine_handle<>> FileWQ::wakeup()
 {
@@ -13,7 +14,7 @@ Generator<std::coroutine_handle<>> FileWQ::wakeup()
         {
             break;
         }
-        else if (revents_ & iter->events_)
+        else if (revents_ & (iter->events_ | EPOLLRDHUP))
         {
             if (iter->cb_)
             {

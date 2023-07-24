@@ -9,12 +9,19 @@ Lazy<void> testconnection(int connfd)
     int n;
     while (true)
     {
-        n = co_await coasync::recv(connfd, buff, 128, 0);
+        auto old = std::chrono::steady_clock::now();
+        n = co_await coasync::recv(connfd, buff, 128, 0, std::chrono::microseconds(10000000));
+        auto interval = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - old);
+
         if (n > 0)
         {
             buff[n] = '\0';
             printf("recv msg from client %p %d: %s\n", buff, n, buff);
             co_await coasync::send(connfd, buff, 128, 0);
+        }
+        else if (n < 0 && errno == EWOULDBLOCK)
+        {
+            std::cout << "timeout" << interval.count() << std::endl;
         }
         else
         {
@@ -68,7 +75,8 @@ Lazy<void> init()
 }
 int main()
 {
-    CoKernel::INIT(2, 1);
+    std::list<int> t;
+    CoKernel::INIT(1, 1);
     coasync::fiber{ init };
     std::cout << std::thread::hardware_concurrency() << std::endl;
     CoKernel::getKernel()->start();

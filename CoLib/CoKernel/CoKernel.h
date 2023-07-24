@@ -17,7 +17,7 @@ public:
     using FileWQMap = std::unordered_map<int, std::shared_ptr<FileWQ>>;
     using CompStarterPtr = std::shared_ptr<CompStarter>;
 
-    Lazy<int> waitFile(int, uint32_t, WQCB);
+    Lazy<int> waitFile(int, uint32_t, WQCB, std::chrono::microseconds);
 
     Lazy<void> waitTime(const TimePoint &);
 
@@ -137,9 +137,9 @@ ICUFAwaiter(ICU* icu, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
 
 struct TimeAwaiter
 {
-    TimePoint point;
+    TimePoint point_;
     ICU *icu_;
-    TimeAwaiter(const TimePoint &when,ICU *icu) : point(when),icu_(icu){};
+    TimeAwaiter(const TimePoint &when,ICU *icu) : point_(when),icu_(icu){};
 
     ~TimeAwaiter() = default;
 
@@ -150,7 +150,10 @@ struct TimeAwaiter
 
     bool await_suspend(std::coroutine_handle<> h)
     {
-        icu_->addTime(h, point);
+        icu_->queueInLoop([h, when = point_, icu = icu_]() mutable -> void {
+            auto timer = icu->getTimerWQ();
+            auto it = timer->addWait(when);it->h_ = h;
+                         });
         return true;
     }
 
@@ -162,7 +165,7 @@ struct FileAwaiter
 {
     template <typename F>
     requires std::is_convertible_v<F,std::function<ioret(int,uint)>>
-    FileAwaiter(std::shared_ptr<FileWQ> &fq,uint events,F &&func) : func_(std::forward<F>(func)),fq_(fq),events_(events),err_(0)
+    FileAwaiter(std::shared_ptr<FileWQ> &fq, uint events, F &&func, std::chrono::microseconds &ti) : func_(std::forward<F>(func)), fq_(fq), events_(events), ti_(ti), err_(0)
     {}
 
     ~FileAwaiter() = default;
@@ -181,13 +184,36 @@ struct FileAwaiter
             err_ = errno;
             return cons.block;
         };
-        icu->queueInLoop([h = std::move(handle), func = std::move(xFunc), this]() mutable -> void {
+        icu->queueInLoop([h = std::move(handle), func = std::move(xFunc),icu,this]() mutable -> void {
         auto revents = fq_->getREvents();
         auto bl = func(fq_->getFd(), 0);
         fq_->setREvents(revents & ~ events_);
         if (bl)
         {
-            fq_->addWait(h, events_, std::move(func));
+            if (ti_.count())
+            {
+                std::cout << "add wait2" << std::endl;
+                auto timer = icu->getTimerWQ();
+                auto it = timer->addWait(std::chrono::steady_clock::now()+ti_);
+                it->h_ = h;
+                auto cb = [func, it, timer](int fd, uint events)mutable {
+                    func(fd, events);
+                    std::cout << "file del timeout" << std::endl;
+                    timer->delWait(it);
+                    };
+                auto fit = fq_->addWait(h, events_, std::move(cb));
+                auto fcb = [fit, this]()mutable {
+                    std::cout << "timeout del file" << std::endl;
+                    ret = -1;
+                    err_ = EWOULDBLOCK;
+                    fq_->delWait(fit);
+                    };
+                it->cb_ = std::move(fcb);
+            }
+            else
+            {
+                fq_->addWait(h, events_, std::move(func));
+            }
         }
         else
         {
@@ -208,6 +234,7 @@ private:
     int err_;
     std::shared_ptr<FileWQ> fq_;
     uint events_;
+    std::chrono::microseconds ti_;
     std::function<ioret(int, uint)> func_;
 };
 

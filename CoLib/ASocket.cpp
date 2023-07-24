@@ -14,7 +14,7 @@ Lazy<int> coasync::listen(int fd, int backlog)
     ret = ::listen(fd, backlog);
     if (!ret)
     {
-        ret = co_await CoKernel::getKernel()->updateIRQ(fd, EPOLLIN | EPOLLPRI | EPOLLET);
+        ret = co_await CoKernel::getKernel()->updateIRQ(fd, EPOLLIN | EPOLLRDHUP | EPOLLET);
     }
     co_return ret;
 }
@@ -42,10 +42,10 @@ Lazy<int> coasync::accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
         return ioret{ clifd,false };
     };
     
-    auto client = co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(acfunc));
+    auto client = co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(acfunc), std::chrono::microseconds(0));
     if (client > 0)
     {
-        auto ret = co_await CoKernel::getKernel()->updateIRQ(client, EPOLLIN | EPOLLPRI | EPOLLET);
+        auto ret = co_await CoKernel::getKernel()->updateIRQ(client, EPOLLIN | EPOLLRDHUP | EPOLLET);
         if (ret)
         {
             ::close(client);
@@ -55,7 +55,7 @@ Lazy<int> coasync::accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
     co_return client;
 }
 
-Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt)
+Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt, std::chrono::microseconds ti)
 {
     auto rvfunc = [iov, iovcnt](int fd, uint events)mutable->ioret {
         int size = -1;
@@ -78,7 +78,7 @@ Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt)
         return ioret{ size,false };
     };
 
-    co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc));
+    co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc),ti);
 }
 
 Lazy<ssize_t> coasync::writev(int fd, const struct iovec *iov, int iovcnt)
@@ -87,7 +87,7 @@ Lazy<ssize_t> coasync::writev(int fd, const struct iovec *iov, int iovcnt)
     co_return size;
 }
 
-Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags)
+Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags, std::chrono::microseconds ti)
 {
     auto rvfunc = [buff, nbytes, flags](int fd, uint events)mutable->ioret {
         int size = -1;
@@ -110,7 +110,7 @@ Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags)
         return ioret{ size,false };
     };
 
-    co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc));
+    co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc), ti);
 }
 
 Lazy<ssize_t> coasync::send(int fd, const void *buff, size_t nbytes, int flags)

@@ -39,14 +39,12 @@ public:
     requires std::is_convertible_v<T, WQCBWrap>
     std::list<WaitItem>::iterator addWait(const std::coroutine_handle<> &h, uint events, T &&cb)
     {
-        items_.emplace_back(h, events, std::forward<T>(cb));
-        return --items_.end();
+        return items_.emplace(items_.end(), h, events, std::forward<T>(cb));
     }
 
     std::list<WaitItem>::iterator addWait()
     {
-        items_.emplace_back();
-        return --items_.end();
+        return items_.emplace(items_.end());
     }
 
     template<typename T>

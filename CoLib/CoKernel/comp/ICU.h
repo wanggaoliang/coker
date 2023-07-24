@@ -67,9 +67,9 @@ public:
         return poller_->updateIRQ(EPOLL_CTL_DEL, WQA);
     }
 
-    void addTime(std::coroutine_handle<> h, const TimePoint &when)
+    TimeWQ *getTimerWQ()
     {
-        queueInLoop([h, when, this]() {auto it = timerWQ_->addWait(when);it->h_ = h;});
+        return timerWQ_.get();
     }
 
     template<typename T>

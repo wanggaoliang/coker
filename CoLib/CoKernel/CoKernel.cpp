@@ -48,7 +48,7 @@ void CoKernel::start()
     icu_->loop();
 }
 
-Lazy<int> CoKernel::waitFile(int fd, uint32_t events, WQCB cb)
+Lazy<int> CoKernel::waitFile(int fd, uint32_t events, WQCB cb, std::chrono::microseconds ti)
 {
     int ret = 0;
     std::shared_ptr<FileWQ> fq;
@@ -65,7 +65,7 @@ Lazy<int> CoKernel::waitFile(int fd, uint32_t events, WQCB cb)
     }
     else
     {
-        ret = co_await FileAwaiter{ fq ,events,std::move(cb) };
+        ret = co_await FileAwaiter{ fq ,events,std::move(cb),ti };
     }
 
     co_return ret;
