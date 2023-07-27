@@ -78,12 +78,22 @@ public:
     {
         wakeCB_ = std::forward<T>(func);
     }
+
+    void wakeWQ(IRQAbs *WQA)
+    {
+        if (!WQA->getWaked())
+        {
+            WQA->setWaked(true);
+            list_.push_back(WQA);
+        }
+    }
 public:
     uint irqn;
     uint pos;
 private:
     std::thread::id threadId_;
     std::unique_ptr<IRQPoll> poller_;
+    IRQPtrList list_;
     MpmcQueue<XCompFunc> funcs_;
     std::unique_ptr<FileWQ> wakeUpWQ_;
     std::unique_ptr<TimeWQ> timerWQ_;

@@ -30,7 +30,7 @@ Lazy<int> coasync::accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
             {
                 if (errno == EWOULDBLOCK)
                 {
-                    return ioret{ clifd,true };
+                    return ioret{ clifd,true,true };
                 }
                 else if (errno == EINTR)
                 {
@@ -55,6 +55,35 @@ Lazy<int> coasync::accept(int fd, struct sockaddr *addr, socklen_t *addrlen)
     co_return client;
 }
 
+Lazy<int> coasync::connect(int fd , const struct sockaddr *addr, int len, std::chrono::microseconds ti )
+{
+    int ret = ::connect(fd, addr, len);
+    if (ret == 0)
+    {
+        std::cout << "ok imi" << std::endl;
+        ret = co_await CoKernel::getKernel()->updateIRQ(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
+    }
+    else if (ret != 0 && errno == EINPROGRESS)
+    {
+        std::cout << "ok later" << std::endl;
+        auto confunc = [addr, len](int fd, uint events)mutable->ioret {
+            int n = 0;
+            int connect_error = 0;
+            socklen_t errlen = sizeof(connect_error);
+            n = getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *) (&connect_error), &errlen);
+            std::cout << "connect err:"<<n<<":"<<connect_error << std::endl;
+            return ioret{ n,true,false };
+            };
+        ret = co_await CoKernel::getKernel()->updateIRQ(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
+        if (!ret)
+        {
+            ret = co_await CoKernel::getKernel()->waitFile(fd, EPOLLOUT, std::move(confunc), ti);
+        }
+
+    }
+    co_return ret;
+}
+
 Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt, std::chrono::microseconds ti)
 {
     auto rvfunc = [iov, iovcnt](int fd, uint events)mutable->ioret {
@@ -66,7 +95,7 @@ Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt, std::c
             {
                 if (errno == EWOULDBLOCK)
                 {
-                    return ioret{ size,true };
+                    return ioret{ size,true,true };
                 }
                 else if (errno == EINTR)
                 {
@@ -75,7 +104,7 @@ Lazy<ssize_t> coasync::readv(int fd, const struct iovec *iov, int iovcnt, std::c
             }
             break;
         }
-        return ioret{ size,false };
+        return ioret{ size,false,false };
     };
 
     co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc),ti);
@@ -98,7 +127,7 @@ Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags, std::c
             {
                 if (errno == EWOULDBLOCK)
                 {
-                    return ioret{ size,true };
+                    return ioret{ size,true,true };
                 }
                 else if (errno == EINTR)
                 {
@@ -107,7 +136,14 @@ Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags, std::c
             }
             break;
         }
-        return ioret{ size,false };
+        if (size == nbytes)
+        {
+            return ioret{ size,false,false };
+        }
+        else
+        {
+            return ioret{ size,true,false };
+        }
     };
 
     co_return co_await CoKernel::getKernel()->waitFile(fd, EPOLLIN | EPOLLPRI, std::move(rvfunc), ti);

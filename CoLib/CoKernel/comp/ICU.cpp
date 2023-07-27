@@ -42,7 +42,7 @@ ICU::~ICU()
 
 void ICU::loop()
 {
-    IRQPtrList list;
+    
     assert(!looping_);
     assertInLoopThread();
     looping_.store(true, std::memory_order_release);
@@ -57,8 +57,9 @@ void ICU::loop()
         {
             func();
         }
-        for (auto i : list)
+        for (auto i : list_)
         {
+            i->setWaked(false);
             auto ge = i->wakeup();
             while (bool(ge))
             {
@@ -66,8 +67,8 @@ void ICU::loop()
                 wakeCB_(h);
             }
         }
-        list.clear();
-        poller_->waitIRQ(list, kPollTimeMs);
+        list_.clear();
+        poller_->waitIRQ(list_, kPollTimeMs);
     }
 }
 

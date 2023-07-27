@@ -3,19 +3,17 @@
 #include "CoRo/Lazy.h"
 namespace coasync
 {
-    class fiber:NonCopyable
+    class future
+    {
+
+    };
+    class fiber :NonCopyable
     {
     public:
-        explicit fiber() noexcept
-        {
-            std::cout << "default fiber" << std::endl;
-        };
-
         template<typename _Callable, typename... _Args>
             requires std::is_invocable_v<typename std::decay<_Callable>::type, typename std::decay<_Args>::type...>
         fiber(_Callable &&__f, _Args&&... __args)
         {
-            std::cout << "fiber" << std::endl;
             __run(make_tmpLazy(std::forward<_Callable>(__f), std::forward<_Args>(__args)...));
 
         }
@@ -29,7 +27,6 @@ namespace coasync
         static Lazy<void> make_tmpLazy(_Callable __f, _Args... __args)
         {
             using ret = decltype(std::declval<_Callable>()(__args...));
-            //using cla = Template_Type_Traits<ret>::classType;
             if constexpr (HasCoAwaitMethod<ret>)
             {
                 co_await __f(__args...);

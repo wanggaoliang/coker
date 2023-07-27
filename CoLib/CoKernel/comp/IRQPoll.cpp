@@ -37,6 +37,7 @@ int IRQPoll::waitIRQ(IRQPtrList& list, int timeout)
     {
         IRQAbs *WQA = static_cast<IRQAbs *>(events_[i].data.ptr);
         WQA->addREvents(events_[i].events);
+        WQA->setWaked(true);
         list.emplace_back(WQA);
     }
     return num_events;

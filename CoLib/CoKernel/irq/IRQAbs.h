@@ -54,12 +54,23 @@ public:
         return fd_;
     }
 
+    void setWaked(bool waked)
+    {
+       waked_ = waked;
+    }
+
+    bool getWaked() const
+    {
+        return waked_;
+    }
+
 protected:
     /* 读写多线程 */
     uint revents_;
     uint wevents_;
     void *const icu_;
     int fd_;
+    bool waked_;
 };
 
 using IRQList = std::vector<IRQAbs>;

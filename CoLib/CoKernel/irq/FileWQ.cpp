@@ -18,14 +18,29 @@ Generator<std::coroutine_handle<>> FileWQ::wakeup()
         {
             if (iter->cb_)
             {
-                iter->cb_(fd_, revents_ & iter->events_);
+                auto [ret,exhausted,block] = iter->cb_(fd_, revents_ & iter->events_);
+                if (exhausted)
+                {
+                    revents_ &= ~(iter->events_);
+                }
+                if (!block)
+                {
+                    auto h = iter->h_;
+                    iter = items_.erase(iter);
+                    if (h)
+                    {
+                        co_yield h;
+                    }
+                }
             }
-            revents_ &= ~(iter->events_);
-            auto h = iter->h_;
-            iter = items_.erase(iter);
-            if (h)
+            else
             {
-                co_yield h;
+                auto h = iter->h_;
+                iter = items_.erase(iter);
+                if (h)
+                {
+                    co_yield h;
+                }
             }
         }
         else

@@ -1,5 +1,169 @@
 #include "CoKernel.h"
 #include <iostream>
+template<typename Res>
+struct ICUFAwaiter
+{
+    using ret_type = Res;
+
+    template <typename F>
+    ICUFAwaiter(ICU *icu, F &&func) : func_(std::forward<F>(func)), icu_(icu)
+    {}
+
+    bool await_ready() noexcept
+    {
+        return false;
+    }
+
+    void await_suspend(std::coroutine_handle<> handle)
+    {
+        icu_->queueInLoop([h = std::move(handle), func = std::move(func_), this]() mutable -> void {
+            ret = func();
+            CoKernel::getKernel()->wakeUpReady(h);
+                          });
+    }
+
+    ret_type await_resume() noexcept
+    {
+        return ret;
+    }
+
+private:
+    ICU *icu_;
+    ret_type ret;
+    std::function<ret_type()> func_;
+};
+
+template <>
+struct ICUFAwaiter<void>
+{
+    using ret_type = void;
+
+    template <typename F>
+    ICUFAwaiter(ICU *icu, F &&func) : func_(std::forward<F>(func)), icu_(icu)
+    {}
+
+    bool await_ready() const noexcept
+    {
+        return false;
+    }
+
+    void await_suspend(std::coroutine_handle<> handle)
+    {
+        icu_->queueInLoop([h = std::move(handle), func = std::move(func_)]() mutable -> void {
+            func();
+            CoKernel::getKernel()->wakeUpReady(h);
+                          });
+    }
+
+    void await_resume() noexcept
+    {}
+
+private:
+    ICU *icu_;
+    std::function <void()> func_;
+};
+
+template <typename F>
+    requires std::invocable<F>
+ICUFAwaiter(ICU *icu, F &&func)->ICUFAwaiter<decltype(std::declval<F>()())>;
+
+struct TimeAwaiter
+{
+    TimePoint point_;
+    ICU *icu_;
+    TimeAwaiter(const TimePoint &when, ICU *icu) : point_(when), icu_(icu) {};
+
+    ~TimeAwaiter() = default;
+
+    bool await_ready() const noexcept
+    {
+        return false;
+    }
+
+    bool await_suspend(std::coroutine_handle<> h)
+    {
+        icu_->queueInLoop([h, when = point_, icu = icu_]() mutable -> void {
+            auto timer = icu->getTimerWQ();
+            auto it = timer->addWait(when);it->h_ = h;
+                          });
+        return true;
+    }
+
+    void await_resume() noexcept
+    {}
+};
+
+struct FileAwaiter
+{
+    template <typename F>
+        requires std::is_convertible_v<F, std::function<ioret(int, uint)>>
+    FileAwaiter(std::shared_ptr<FileWQ> &fq, uint events, F &&func, std::chrono::microseconds &ti) : func_(std::forward<F>(func)), fq_(fq), events_(events), ti_(ti), err_(0)
+    {}
+
+    ~FileAwaiter() = default;
+
+    bool await_ready() const noexcept
+    {
+        return false;
+    }
+
+    bool await_suspend(std::coroutine_handle<> handle)
+    {
+        auto icu = static_cast<ICU *>(fq_->getICU());
+        icu->queueInLoop([h = std::move(handle), icu, this]() mutable -> void {
+            if (ti_.count())
+            {
+                std::cout << "add wait2" << std::endl;
+                auto timer = icu->getTimerWQ();
+                auto it = timer->addWait(std::chrono::steady_clock::now() + ti_);
+                it->h_ = h;
+                auto cb = [it, timer, this](int fd, uint events)mutable {
+                    auto cons = this->func_(fd, events);
+                    std::cout << "file del timeout" << std::endl;
+                    timer->delWait(it);
+                    ret = cons.ret;
+                    err_ = errno;
+                    return cons;
+                    };
+                auto fit = fq_->addWait(h, events_, std::move(cb));
+                auto fcb = [fit, this]()mutable {
+                    std::cout << "timeout del file" << std::endl;
+                    ret = -1;
+                    err_ = EWOULDBLOCK;
+                    fq_->delWait(fit);
+                    };
+                it->cb_ = std::move(fcb);
+            }
+            else
+            {
+                auto cb = [this](int fd, uint events)mutable->ioret {
+                    auto cons = this->func_(fd, events);
+                    ret = cons.ret;
+                    err_ = errno;
+                    return cons;
+                    };
+                fq_->addWait(h, events_, std::move(cb));
+            }
+
+            icu->wakeWQ(fq_.get());
+                         });
+        return true;
+    }
+
+    int await_resume() noexcept
+    {
+        errno = err_;
+        return ret;
+    }
+
+private:
+    int ret;
+    int err_;
+    std::shared_ptr<FileWQ> fq_;
+    uint events_;
+    std::chrono::microseconds ti_;
+    std::function<ioret(int, uint)> func_;
+};
 
 std::shared_ptr<CoKernel> CoKernel::kernel = nullptr;
 

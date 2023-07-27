@@ -13,7 +13,8 @@ namespace coasync
 
     Lazy<int> accept(int fd, struct sockaddr *addr, socklen_t *addrlen);
 
-    
+    Lazy<int> connect(int, const struct sockaddr *, int, std::chrono::microseconds ti = std::chrono::microseconds(0));
+
     Lazy<ssize_t> readv(int, const struct iovec *, int, std::chrono::microseconds ti = std::chrono::microseconds(0));
 
     Lazy<ssize_t> writev(int, const struct iovec *, int);

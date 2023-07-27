@@ -6,11 +6,12 @@
 struct ioret
 {
     int ret;
+    bool exhausted;
     bool block;
 };
 
 using WQCB = std::function<ioret(int, uint)>;
-using WQCBWrap = std::function<void(int, uint)>;
+using WQCBWrap = std::function<ioret(int, uint)>;
 using FDCB = std::function<void(int)>;
 class FileWQ :public IRQAbs
 {
