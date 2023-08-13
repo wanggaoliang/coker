@@ -71,7 +71,7 @@ Lazy<int> coasync::connect(int fd , const struct sockaddr *addr, int len, std::c
             int connect_error = 0;
             socklen_t errlen = sizeof(connect_error);
             n = getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *) (&connect_error), &errlen);
-            std::cout << "connect err:"<<n<<":"<<connect_error << std::endl;
+            std::cout << "connect err:"<<n<<":"<<connect_error<<":"<<events << std::endl;
             return ioret{ n,true,false };
             };
         ret = co_await CoKernel::getKernel()->updateIRQ(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
@@ -152,6 +152,10 @@ Lazy<ssize_t> coasync::recv(int fd, void *buff, size_t nbytes, int flags, std::c
 Lazy<ssize_t> coasync::send(int fd, const void *buff, size_t nbytes, int flags)
 {
     int size = ::send(fd, buff, nbytes, flags);
+    if (size < 0)
+    {
+        std::cout << "send err:" << errno << std::endl;
+    }
     co_return size;
 }
 

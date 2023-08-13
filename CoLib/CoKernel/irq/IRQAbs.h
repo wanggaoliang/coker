@@ -6,7 +6,7 @@ class IRQAbs
 {
 public:
     IRQAbs(int fd, void *icu) :revents_(0), wevents_(0), fd_(fd), icu_(icu) {}
-    ~IRQAbs()
+    virtual ~IRQAbs()
     {}
     
     virtual Generator<std::coroutine_handle<>> wakeup() = 0;

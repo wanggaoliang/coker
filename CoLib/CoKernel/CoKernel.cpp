@@ -335,7 +335,6 @@ Lazy<int> CoKernel::removeIRQ(int fd)
     }
     co_await CoRoUnlock(fMapLk_);
     co_return ret;
-;
 }
 
 void CoKernel::wakeUpReady(std::coroutine_handle<> &h)
