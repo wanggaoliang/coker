@@ -1,16 +1,17 @@
 #pragma once
 #include <coroutine>
 #include <atomic>
+#include <chrono>
 #include "../utils/MpmcQueue.h"
-struct MuCore
+struct CvCore
 {
+    using TimePoint = std::chrono::steady_clock::time_point;
     struct WaitItem
     {
-        int tid_;
         std::coroutine_handle<> h_;
+        TimePoint when_; 
     };
-    std::atomic<int> tid_;
-    std::atomic<uint> waiter_;
+    std::atomic<uint> margin__;
     uint index;
     MpmcQueue<WaitItem> items_;
 };

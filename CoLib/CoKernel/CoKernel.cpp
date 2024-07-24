@@ -18,7 +18,7 @@ struct ICUFAwaiter
     {
         icu_->queueInLoop([h = std::move(handle), func = std::move(func_), this]() mutable -> void {
             ret = func();
-            CoKernel::getKernel()->wakeUpReady(h);
+            CoKernel::getKernel()->wakeUpReady(h, std::string("ICUF"));
                           });
     }
 
@@ -51,7 +51,7 @@ struct ICUFAwaiter<void>
     {
         icu_->queueInLoop([h = std::move(handle), func = std::move(func_)]() mutable -> void {
             func();
-            CoKernel::getKernel()->wakeUpReady(h);
+            CoKernel::getKernel()->wakeUpReady(h, std::string("ICUFV"));
                           });
     }
 
@@ -113,13 +113,11 @@ struct FileAwaiter
         icu->queueInLoop([h = std::move(handle), icu, this]() mutable -> void {
             if (ti_.count())
             {
-                std::cout << "add wait2" << std::endl;
                 auto timer = icu->getTimerWQ();
                 auto it = timer->addWait(std::chrono::steady_clock::now() + ti_);
                 it->h_ = h;
                 auto cb = [it, timer, this](int fd, uint events)mutable {
                     auto cons = this->func_(fd, events);
-                    std::cout << "file del timeout" << std::endl;
                     timer->delWait(it);
                     ret = cons.ret;
                     err_ = errno;
@@ -127,7 +125,6 @@ struct FileAwaiter
                     };
                 auto fit = fq_->addWait(h, events_, std::move(cb));
                 auto fcb = [fit, this]()mutable {
-                    std::cout << "timeout del file" << std::endl;
                     ret = -1;
                     err_ = EWOULDBLOCK;
                     fq_->delWait(fit);
@@ -169,7 +166,7 @@ std::shared_ptr<CoKernel> CoKernel::kernel = nullptr;
 
 CoKernel::CoKernel(uint icuNum, uint cpuNum) :icuNum_(icuNum), cpuNum_(cpuNum)
 {
-    for (int i = 0;i < icuNum_ - 1;i++)
+    for (uint i = 0;i < icuNum_ - 1;i++)
     {
         auto cPtr = std::make_shared<CompStarter>(CompStarter::COMP_ICU);
         comps_.push_back(cPtr);
@@ -178,12 +175,12 @@ CoKernel::CoKernel(uint icuNum, uint cpuNum) :icuNum_(icuNum), cpuNum_(cpuNum)
         {
             std::string name = "ICU:";
             icu->setName(name += std::to_string(i));
-            icu->setWakeCallback(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1));
+            icu->setWakeCallback(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1, std::string("icuwake")));
             icus_.push_back(icu);
         }
         
     }
-    for (int i = 0;i < cpuNum_;i++)
+    for (uint i = 0;i < cpuNum_;i++)
     {
         auto cPtr = std::make_shared<CompStarter>(CompStarter::COMP_CPU);
         comps_.push_back(cPtr);
@@ -199,7 +196,7 @@ CoKernel::CoKernel(uint icuNum, uint cpuNum) :icuNum_(icuNum), cpuNum_(cpuNum)
     
     icu_ = std::make_shared<ICU>();
     icu_->setName(std::string("ICU:") + std::to_string(icuNum_ -1));
-    icu_->setWakeCallback(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1));
+    icu_->setWakeCallback(std::bind(&CoKernel::wakeUpReady, this, std::placeholders::_1, std::string("icuwake")));
     icus_.push_back(icu_.get());
 }
 
@@ -254,7 +251,7 @@ Lazy<int> CoKernel::updateIRQ(int fd, uint32_t events)
 {
     ICU *icu = nullptr;
     int ret = 0;
-    int i = 0;
+    uint i = 0;
     co_await CoRoLock(fMapLk_);
     auto file = fileWQPtrs_.find(fd);
     auto found = file != fileWQPtrs_.end();
@@ -337,9 +334,9 @@ Lazy<int> CoKernel::removeIRQ(int fd)
     co_return ret;
 }
 
-void CoKernel::wakeUpReady(std::coroutine_handle<> &h)
+void CoKernel::wakeUpReady(std::coroutine_handle<> &h,const std::string &str)
 {
-    std::cout << "wake up in " << Component::getCurComp()->getName() << std::endl;
+    //std::cout << str <<" wake up in " << Component::getCurComp()->getName() << std::endl;
     {
         std::lock_guard<std::mutex> lg(hmu);
         readyRo_.enqueue(h);

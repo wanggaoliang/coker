@@ -22,7 +22,7 @@ Lazy<void> test_coro_sleep(int in)
     for (int i = 0; i < 4;i++)
     {
 
-        co_await coasync::sleep_for(std::chrono::seconds(3));
+        co_await colib::sleep_for(std::chrono::seconds(3));
     }
     auto interval = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - old);
     std::cout << in << ": end test:" << interval.count() << std::endl;
@@ -33,7 +33,7 @@ void init1()
 {
     for (int i = 0; i < 5; i++)
     {
-        coasync::fiber(test_coro_sleep, i);
+        colib::fiber(test_coro_sleep, i);
     }
 }
 
@@ -41,7 +41,7 @@ Lazy<void> init()
 {
     for (int i = 0; i < 5; i++)
     {
-        coasync::fiber(test_thread_sleep, i);
+        colib::fiber(test_thread_sleep, i);
     }
     co_return;
 }
@@ -49,7 +49,7 @@ Lazy<void> init()
 int main()
 {
     CoKernel::INIT(2, 1);
-    coasync::fiber{ init };
+    colib::fiber{ init };
     std::cout << std::thread::hardware_concurrency() << std::endl;
     CoKernel::getKernel()->start();
     std::cout << "2" << std::endl;

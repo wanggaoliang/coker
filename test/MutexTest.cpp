@@ -2,7 +2,7 @@
 #include "CoLib/CoKernel/CoKernel.h"
 #include "CoLib/AFiber.h"
 #include "CoLib/AMutex.h"
-coasync::AMutex amu;
+colib::AMutex amu;
 
 Lazy<void> test1(int a)
 {
@@ -10,7 +10,7 @@ Lazy<void> test1(int a)
     {
         co_await amu.lock();
         std::cout << 1 << ":" << a << ":" << i << std::endl;
-        co_await coasync::sleep_for(std::chrono::seconds(1));
+        co_await colib::sleep_for(std::chrono::seconds(1));
         co_await amu.unlock();
     }
     co_return;
@@ -20,7 +20,7 @@ void init()
 {
     for (int i = 0; i < 10; i++)
     {
-        coasync::fiber(test1, i);
+        colib::fiber(test1, i);
     }
 }
 int main()

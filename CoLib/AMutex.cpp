@@ -1,17 +1,22 @@
 #include "CoKernel.h"
 #include "AMutex.h"
 
-Lazy<void> coasync::AMutex::lock()
+Lazy<void> colib::AMutex::lock()
 {
     co_await LockAwaiter{&mc};
 }
 
-Lazy<void> coasync::AMutex::try_to_lock()
+Lazy<void> colib::AMutex::try_to_lock()
 {
     co_await TryLockAwaiter{ &mc };
 }
 
-Lazy<void> coasync::AMutex::unlock()
+Lazy<void> colib::AMutex::try_lock_for()
+{
+    co_await TryLockAwaiter{ &mc };
+}
+
+Lazy<void> colib::AMutex::unlock()
 {
     co_await UnlockAwaiter{ &mc };;
 }

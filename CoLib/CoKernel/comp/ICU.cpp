@@ -9,9 +9,9 @@ const int kPollTimeMs = 1000000;
 
 ICU::ICU()
     :Component(),
-    poller_(new IRQPoll()),
+    irqn(0),
     threadId_(std::this_thread::get_id()),
-    irqn(0)
+    poller_(new IRQPoll()) 
 {
     int wakeupFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (wakeupFd < 0)
@@ -23,6 +23,7 @@ ICU::ICU()
         read(fd, &tmp, sizeof(tmp));}));
     wakeUpWQ_->setWEvents(EPOLLIN | EPOLLET);
     poller_->updateIRQ(EPOLL_CTL_ADD, wakeUpWQ_.get());
+    
     timerWQ_.reset(new TimeWQ(this));
     timerWQ_->setWEvents(EPOLLIN | EPOLLET);
     poller_->updateIRQ(EPOLL_CTL_ADD, timerWQ_.get());

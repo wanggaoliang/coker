@@ -1,7 +1,7 @@
 #pragma once
 #include "irq/TimeWQ.h"
 #include "irq/FileWQ.h"
-#include "CompStarter.h"
+#include "comp/CompStarter.h"
 #include "MuCore.h"
 #include "../CoRo/Lazy.h"
 #include <mutex>
@@ -29,7 +29,7 @@ public:
 
     Lazy<int> removeIRQ(int);
 
-    void wakeUpReady(std::coroutine_handle<> &);
+    void wakeUpReady(std::coroutine_handle<> &,const std::string&);
 
     bool schedule();
 
@@ -154,7 +154,6 @@ struct UnlockAwaiter
 
     bool await_suspend(LockHandle h)
     {
-        int ul = 0;
         MuCore::WaitItem newItem;
         auto ret = mu_->tid_.compare_exchange_strong(h.promise()._tcb->tid, 0);
         if (ret)
@@ -164,7 +163,7 @@ struct UnlockAwaiter
             {
                 while (!mu_->items_.dequeue(newItem));
                 mu_->tid_.store(newItem.tid_);
-                CoKernel::getKernel()->wakeUpReady(newItem.h_);
+                CoKernel::getKernel()->wakeUpReady(newItem.h_, std::string("unlock"));
             }
         }
         else

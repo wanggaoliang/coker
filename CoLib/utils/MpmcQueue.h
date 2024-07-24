@@ -19,8 +19,8 @@ private:
     };
 public:
     MpmcQueue()
-        : sHead_(new BufferNode), sTail_(sHead_.load(std::memory_order_relaxed)),
-        uHead_(new BufferNode), uTail_(uHead_.load(std::memory_order_relaxed))
+        :uHead_(new BufferNode), uTail_(uHead_.load(std::memory_order_relaxed)),
+        sHead_(new BufferNode), sTail_(sHead_.load(std::memory_order_relaxed))
     {
     }
     ~MpmcQueue()

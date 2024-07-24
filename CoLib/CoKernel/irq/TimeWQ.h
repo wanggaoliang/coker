@@ -26,8 +26,8 @@ public:
         
         WaitItem(const std::coroutine_handle<> &h, const TimePoint &when, TimeCBWrap &&cb) :
             h_(h),
-            when_(when),
-            cb_(std::move(cb))
+            cb_(std::move(cb)),
+            when_(when)
         {
             
         }

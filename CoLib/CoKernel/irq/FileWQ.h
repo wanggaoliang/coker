@@ -18,14 +18,14 @@ class FileWQ :public IRQAbs
 public:
     struct WaitItem
     {
-        WQCBWrap cb_;
         std::coroutine_handle<> h_;
+        WQCBWrap cb_;
         uint events_;
         WaitItem()
         {}
         
         WaitItem(const std::coroutine_handle<> &h, uint events, WQCBWrap &&cb)
-            :h_(h), events_(events),cb_(std::move(cb))
+            :h_(h), cb_(std::move(cb)), events_(events)
         {}
     };
 

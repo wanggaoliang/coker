@@ -18,7 +18,7 @@ Generator<std::coroutine_handle<>> FileWQ::wakeup()
         {
             if (iter->cb_)
             {
-                auto [ret,exhausted,block] = iter->cb_(fd_, revents_ & iter->events_);
+                auto [ret, exhausted, block] = iter->cb_(fd_, revents_ & (iter->events_ | EPOLLRDHUP));
                 if (exhausted)
                 {
                     revents_ &= ~(iter->events_);
